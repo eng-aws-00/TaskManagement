@@ -17,6 +17,17 @@ namespace TaskManagement
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
+            // CORS - Allow all origins for development
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader();
+                });
+            });
+
             // JWT Authentication
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
@@ -40,12 +51,20 @@ namespace TaskManagement
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
+            // CORS must be first
+            app.UseCors("AllowAll");
+
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
-                app.UseSwagger();
-                app.UseSwaggerUI();
             }
+
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaskManagement API V1");
+                c.RoutePrefix = "swagger";
+            });
 
             app.UseHttpsRedirection();
 
