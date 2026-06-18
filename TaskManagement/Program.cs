@@ -11,7 +11,8 @@ namespace TaskManagement
             builder.Services
                 .AddApiServices()
                 .AddJwtAuthentication(builder.Configuration)
-                .AddTaskManagementDbContext(builder.Configuration);
+                .AddTaskManagementDbContext(builder.Configuration)
+                .AddApplicationServices();
 
             var app = builder.Build();
 

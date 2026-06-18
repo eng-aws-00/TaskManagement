@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using TaskManagement.DbContexts;
+using TaskManagement.Services;
 
 namespace TaskManagement.Extensions
 {
@@ -42,6 +43,14 @@ namespace TaskManagement.Extensions
             {
                 options.UseSqlServer(configuration.GetConnectionString("TaskManagementContext"));
             });
+
+            return services;
+        }
+
+        public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+        {
+            services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<ITaskService, TaskService>();
 
             return services;
         }

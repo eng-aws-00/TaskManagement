@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using TaskManagement.DbContexts;
 using TaskManagement.Dtos.Tasks;
-using TaskManagement.Models;
+using TaskManagement.Services;
 
 namespace TaskManagement.Controllers
 {
@@ -12,11 +11,16 @@ namespace TaskManagement.Controllers
     [ApiController]
     public class TasksController : ControllerBase
     {
-        private readonly TaskManagementContext _dbContext;
+        private readonly ITaskService _taskService;
 
-        public TasksController(TaskManagementContext dbContext)
+        public TasksController(ITaskService taskService)
         {
-            _dbContext = dbContext;
+            _taskService = taskService;
+        }
+
+        private long GetCurrentUserId()
+        {
+            return long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
         }
 
         [HttpGet("GetByCriteria")]
@@ -24,29 +28,8 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                // Extract UserId from JWT
-                var userId = long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-
-                // Query tasks for current user only
-                var query = from task in _dbContext.Tasks
-                            from lookup in _dbContext.Lookups.Where(l => l.Id == task.StatusId).DefaultIfEmpty()
-                            where task.UserId == userId
-                               && (searchDto.Title == null || task.Title.ToLower().Contains(searchDto.Title.ToLower()))
-                               && (searchDto.StatusId == null || task.StatusId == searchDto.StatusId)
-                            orderby task.Id descending
-                            select new TaskDto
-                            {
-                                Id = task.Id,
-                                Title = task.Title,
-                                Description = task.Description,
-                                FromDate = task.FromDate,
-                                ToDate = task.ToDate,
-                                StatusId = task.StatusId,
-                                StatusName = lookup.Name,
-                                UserId = task.UserId
-                            };
-
-                var data = query.ToList();
+                var userId = GetCurrentUserId();
+                var data = _taskService.GetByCriteria(userId, searchDto);
                 return Ok(data);
             }
             catch (Exception ex)
@@ -60,29 +43,13 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                // Extract UserId from JWT
-                var userId = long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-
-                // Get task only if it belongs to current user
-                var data = (from task in _dbContext.Tasks
-                            from lookup in _dbContext.Lookups.Where(l => l.Id == task.StatusId).DefaultIfEmpty()
-                            where task.Id == id && task.UserId == userId
-                            select new TaskDto
-                            {
-                                Id = task.Id,
-                                Title = task.Title,
-                                Description = task.Description,
-                                FromDate = task.FromDate,
-                                ToDate = task.ToDate,
-                                StatusId = task.StatusId,
-                                StatusName = lookup.Name,
-                                UserId = task.UserId
-                            }).FirstOrDefault();
-
-                if (data == null)
-                    return NotFound("Task not found.");
-
+                var userId = GetCurrentUserId();
+                var data = _taskService.GetById(userId, id);
                 return Ok(data);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
             }
             catch (Exception ex)
             {
@@ -95,30 +62,13 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                // Validate date range
-                if (dto.FromDate > dto.ToDate)
-                {
-                    return BadRequest("FromDate must be less than or equal to ToDate.");
-                }
-
-                // Extract UserId from JWT
-                var userId = long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-
-                // Create task
-                var task = new TaskItem
-                {
-                    Title = dto.Title,
-                    Description = dto.Description,
-                    FromDate = dto.FromDate,
-                    ToDate = dto.ToDate,
-                    StatusId = dto.StatusId,
-                    UserId = userId
-                };
-
-                _dbContext.Tasks.Add(task);
-                _dbContext.SaveChanges();
-
-                return Ok(task.Id);
+                var userId = GetCurrentUserId();
+                var taskId = _taskService.Add(userId, dto);
+                return Ok(taskId);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
             }
             catch (Exception ex)
             {
@@ -131,37 +81,17 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                if (dto.Id == null)
-                {
-                    return BadRequest("Task Id is required.");
-                }
-
-                // Validate date range
-                if (dto.FromDate > dto.ToDate)
-                {
-                    return BadRequest("FromDate must be less than or equal to ToDate.");
-                }
-
-                // Extract UserId from JWT
-                var userId = long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-
-                // Find task only if it belongs to current user
-                var task = _dbContext.Tasks
-                    .FirstOrDefault(t => t.Id == dto.Id && t.UserId == userId);
-
-                if (task == null)
-                    return BadRequest("Task not found or access denied.");
-
-                // Update task
-                task.Title = dto.Title;
-                task.Description = dto.Description;
-                task.FromDate = dto.FromDate;
-                task.ToDate = dto.ToDate;
-                task.StatusId = dto.StatusId;
-
-                _dbContext.SaveChanges();
-
+                var userId = GetCurrentUserId();
+                _taskService.Update(userId, dto);
                 return Ok("Task updated successfully.");
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return BadRequest(ex.Message);
             }
             catch (Exception ex)
             {
@@ -174,20 +104,13 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                // Extract UserId from JWT
-                var userId = long.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-
-                // Find task only if it belongs to current user
-                var task = _dbContext.Tasks
-                    .FirstOrDefault(t => t.Id == id && t.UserId == userId);
-
-                if (task == null)
-                    return BadRequest("Task not found or access denied.");
-
-                _dbContext.Tasks.Remove(task);
-                _dbContext.SaveChanges();
-
+                var userId = GetCurrentUserId();
+                _taskService.Delete(userId, id);
                 return Ok("Task deleted successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return BadRequest(ex.Message);
             }
             catch (Exception ex)
             {
